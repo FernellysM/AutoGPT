@@ -1,11 +1,9 @@
 "use client";
 
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
-import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
@@ -83,7 +81,7 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
-    // Delete functionality (available via ChatSidebar context menu on all viewports)
+    // Delete functionality
     sessionToDelete,
     isDeleting,
     handleConfirmDelete,
@@ -99,50 +97,44 @@ export function CopilotPage() {
   }
 
   return (
-    <SidebarProvider
-      defaultOpen={true}
-      className="h-[calc(100vh-72px)] min-h-0"
+    <div
+      className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      {!isMobile && <ChatSidebar />}
+      {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+      <NotificationBanner />
+      {/* Drop overlay */}
       <div
-        className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        className={cn(
+          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
+          isDragging ? "opacity-100" : "opacity-0",
+        )}
       >
-        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
-        <NotificationBanner />
-        {/* Drop overlay */}
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
-          <span className="text-lg font-medium text-violet-600">
-            Drop files here
-          </span>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <ChatContainer
-            messages={messages}
-            status={status}
-            error={error}
-            sessionId={sessionId}
-            isLoadingSession={isLoadingSession}
-            isSessionError={isSessionError}
-            isCreatingSession={isCreatingSession}
-            isReconnecting={isReconnecting}
-            onCreateSession={createSession}
-            onSend={onSend}
-            onStop={stop}
-            isUploadingFiles={isUploadingFiles}
-            droppedFiles={droppedFiles}
-            onDroppedFilesConsumed={handleDroppedFilesConsumed}
-          />
-        </div>
+        <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
+        <span className="text-lg font-medium text-violet-600">
+          Drop files here
+        </span>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <ChatContainer
+          messages={messages}
+          status={status}
+          error={error}
+          sessionId={sessionId}
+          isLoadingSession={isLoadingSession}
+          isSessionError={isSessionError}
+          isCreatingSession={isCreatingSession}
+          isReconnecting={isReconnecting}
+          onCreateSession={createSession}
+          onSend={onSend}
+          onStop={stop}
+          isUploadingFiles={isUploadingFiles}
+          droppedFiles={droppedFiles}
+          onDroppedFilesConsumed={handleDroppedFilesConsumed}
+        />
       </div>
       {isMobile && (
         <MobileDrawer
@@ -156,7 +148,6 @@ export function CopilotPage() {
           onOpenChange={handleDrawerOpenChange}
         />
       )}
-      {/* Delete confirmation dialog - rendered at top level for proper z-index on mobile */}
       {isMobile && (
         <DeleteChatDialog
           session={sessionToDelete}
@@ -166,6 +157,6 @@ export function CopilotPage() {
         />
       )}
       <NotificationDialog />
-    </SidebarProvider>
+    </div>
   );
 }
