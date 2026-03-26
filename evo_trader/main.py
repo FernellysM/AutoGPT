@@ -27,6 +27,7 @@ from datetime import datetime
 from .backtest import fetch_data, fetch_multi_asset, split_data
 from .evolution import evolve
 from .genome import genome_summary
+from .ruflow import run_ruflow
 
 
 DEFAULT_MULTI_TICKERS = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "ADA-USD"]
@@ -43,11 +44,29 @@ def main():
     parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital (default: 10000)")
     parser.add_argument("--mutation", type=float, default=0.15, help="Mutation rate (default: 0.15)")
     parser.add_argument("--train-ratio", type=float, default=0.7, help="Train/val split ratio (default: 0.7)")
-    parser.add_argument("--mode", choices=["standard", "walk_forward", "multi_asset", "anti_overfit"],
-                        default="anti_overfit", help="Evolution mode (default: anti_overfit)")
+    parser.add_argument("--mode", choices=["standard", "walk_forward", "multi_asset", "anti_overfit", "ruflow"],
+                        default="anti_overfit", help="Evolution mode (default: anti_overfit). "
+                             "Use 'ruflow' for the multi-agent Ruflo swarm pipeline.")
     parser.add_argument("--wf-splits", type=int, default=5, help="Walk-forward splits (default: 5)")
     parser.add_argument("--save", default=None, help="Save best genome to JSON file")
     args = parser.parse_args()
+
+    # ------------------------------------------------------------------
+    # Ruflow: delegate entirely to the multi-agent swarm
+    # ------------------------------------------------------------------
+    if args.mode == "ruflow":
+        ruflow_tickers = args.tickers or [args.ticker]
+        run_ruflow(
+            tickers=ruflow_tickers,
+            period=args.period,
+            interval=args.interval,
+            pop_size=args.pop,
+            gens=args.gens,
+            mutation_rate=args.mutation,
+            initial_capital=args.capital,
+            save_dir="ruflow_output",
+        )
+        return
 
     tickers = args.tickers or DEFAULT_MULTI_TICKERS
     mode_display = {
