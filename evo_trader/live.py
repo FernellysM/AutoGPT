@@ -76,10 +76,9 @@ Examples:
     # Exchange
     parser.add_argument("--exchange", default="binance",
                         help="Exchange ID (default: binance). Supports: binance, coinbase, kraken, bybit")
-    parser.add_argument("--api-key", default=None,
-                        help="API key (or set EXCHANGE_API_KEY env var)")
-    parser.add_argument("--api-secret", default=None,
-                        help="API secret (or set EXCHANGE_API_SECRET env var)")
+    # API keys must be supplied via environment variables to avoid shell-history leaks.
+    # export EXCHANGE_API_KEY=your_key
+    # export EXCHANGE_API_SECRET=your_secret
 
     # Safety
     parser.add_argument("--max-loss", type=float, default=0.20,
@@ -109,9 +108,9 @@ Examples:
         print(f"ERROR: Invalid genome file: {e}")
         sys.exit(1)
 
-    # Get API keys
-    api_key = args.api_key or os.environ.get("EXCHANGE_API_KEY", "")
-    api_secret = args.api_secret or os.environ.get("EXCHANGE_API_SECRET", "")
+    # Get API keys from environment variables only (never from CLI args).
+    api_key = os.environ.get("EXCHANGE_API_KEY", "")
+    api_secret = os.environ.get("EXCHANGE_API_SECRET", "")
 
     if args.live and (not api_key or not api_secret):
         print("\nERROR: Live trading requires API keys.")

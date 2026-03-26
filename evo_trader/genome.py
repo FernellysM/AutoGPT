@@ -125,10 +125,20 @@ def _clamp(genome: Dict[str, float]) -> Dict[str, float]:
         if gene in INT_GENES:
             genome[gene] = int(round(genome[gene]))
 
-    # Enforce ordering constraints
+    # Enforce ordering constraints: lo_gene must be strictly less than hi_gene.
+    # If already satisfied we skip; otherwise try bumping hi up first, then
+    # pulling lo down so both stay inside their respective bounds.
     for lo_gene, hi_gene in ORDERING_CONSTRAINTS:
         if genome[lo_gene] >= genome[hi_gene]:
-            genome[hi_gene] = genome[lo_gene] + 1
+            hi_max = GENE_BOUNDS[hi_gene][1]
+            lo_min = GENE_BOUNDS[lo_gene][0]
+            bumped_hi = genome[lo_gene] + 1
+            if bumped_hi <= hi_max:
+                genome[hi_gene] = bumped_hi
+            else:
+                # hi is already at its ceiling — pull lo down instead
+                genome[lo_gene] = genome[hi_gene] - 1
+                genome[lo_gene] = max(genome[lo_gene], lo_min)
 
     return genome
 

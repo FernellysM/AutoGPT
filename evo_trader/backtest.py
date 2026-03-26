@@ -86,36 +86,36 @@ def walk_forward_splits(
     train_pct: float = 0.6,
 ) -> List[Tuple[pd.DataFrame, pd.DataFrame]]:
     """
-    Generate walk-forward train/test splits.
+    Generate walk-forward train/test splits using an expanding-window scheme.
 
-    Instead of one train/test split, creates multiple rolling windows:
-    [====train====][==test==]
-         [====train====][==test==]
-              [====train====][==test==]
+    Divides the data into (n_splits + 1) roughly equal chunks.  Window i uses
+    chunks [0 … i] as training data and chunk [i+1] as the test period.  Train
+    and test are always strictly non-overlapping.
 
-    This tests whether the strategy generalizes across different market regimes.
+    [=chunk0=|=chunk1=|=chunk2=|=chunk3=|=chunk4=|=chunk5=]
+     window1: train=[0]        test=[1]
+     window2: train=[0,1]      test=[2]
+     window3: train=[0,1,2]    test=[3]
+     ...
     """
     total_len = len(df)
-    window_size = total_len // n_splits
-    train_size = int(window_size * train_pct / (1 - train_pct + train_pct))
+    chunk_size = total_len // (n_splits + 1)
 
-    # Minimum sizes
-    min_train = max(60, int(total_len * 0.15))
-    min_test = max(20, int(total_len * 0.05))
+    min_train = max(60, chunk_size)
+    min_test = max(20, chunk_size // 2)
 
     splits = []
-    step = (total_len - min_train - min_test) // max(n_splits - 1, 1)
+    for i in range(1, n_splits + 1):
+        train_end = i * chunk_size
+        test_end = min((i + 1) * chunk_size, total_len)
 
-    for i in range(n_splits):
-        start = i * step
-        train_end = start + min_train + int((total_len - min_train - min_test) * train_pct * (1 / n_splits))
-        train_end = min(train_end, total_len - min_test)
-        test_end = min(train_end + min_test + step // 2, total_len)
+        # Strict non-overlap is guaranteed: test starts exactly where train ends.
+        assert test_end > train_end, "test window must start after train window"
 
-        if train_end - start < min_train or test_end - train_end < min_test:
+        if train_end < min_train or (test_end - train_end) < min_test:
             continue
 
-        train_df = df.iloc[start:train_end].copy()
+        train_df = df.iloc[:train_end].copy()
         test_df = df.iloc[train_end:test_end].copy()
         splits.append((train_df, test_df))
 
@@ -226,8 +226,9 @@ def evaluate_genome_multi_asset(
         "sharpe_ratio": avg_sharpe,
         "profit_factor": np.mean([r.get("profit_factor", 0) for r in all_results]),
         "total_fees": total_fees,
-        "equity_curve": all_results[0]["equity_curve"],
-        "trades": all_results[0]["trades"],
+        # equity_curve and trades come from the best-return asset for display.
+        "equity_curve": max(all_results, key=lambda r: r["total_return"])["equity_curve"],
+        "trades": max(all_results, key=lambda r: r["total_return"])["trades"],
         "per_asset": {r["ticker"]: {
             "return": r["total_return"],
             "sharpe": r["sharpe_ratio"],
@@ -363,13 +364,23 @@ def fitness_score(result: Dict, mode: str = "standard") -> float:
     Modes:
     - "standard": basic fitness
     - "robust": penalizes inconsistency, rewards generalization
-    - "anti_overfit": heavily penalizes train/val divergence
+    - "anti_overfit": penalizes noise sensitivity and rewards val performance
+      (overfit_gap penalty is already baked into total_return by
+      evaluate_with_validation, so it is NOT applied again here)
     """
-    ret = result["total_return"]
-    sharpe = result["sharpe_ratio"]
-    drawdown = abs(result["max_drawdown"])
+    ret = float(result["total_return"])
+    sharpe = float(result["sharpe_ratio"])
+    drawdown = abs(float(result["max_drawdown"]))
     n_trades = result["total_trades"]
     consistency = result.get("consistency", 1.0)
+
+    # Guard against degenerate backtests that produce NaN / inf metrics.
+    if not np.isfinite(ret):
+        return -1000.0
+    if not np.isfinite(sharpe):
+        sharpe = 0.0
+    if not np.isfinite(drawdown):
+        drawdown = 1.0
 
     # Kill condition: negative return = heavily penalized
     if ret < 0:
@@ -391,28 +402,29 @@ def fitness_score(result: Dict, mode: str = "standard") -> float:
         if n_trades < 5:
             score *= 0.5
 
-        # Profit factor bonus
-        pf = result.get("profit_factor", 0)
+        # Profit factor bonus (capped so inf never propagates)
+        pf = min(float(result.get("profit_factor", 0)), 100.0)
         if pf > 1:
             score += min(pf, 5) * 5
 
-        # Fee awareness
+        # Fee awareness: derive initial_capital from final_equity and return.
         fees = result.get("total_fees", 0)
-        initial = result.get("final_equity", 10000) - (result["total_return"] * 10000)
+        final_equity = result.get("final_equity", 10000)
+        # initial = final / (1 + ret), valid when ret > -1
+        if ret > -1:
+            initial = final_equity / (1 + ret)
+        else:
+            initial = final_equity
         if initial > 0:
             fee_ratio = fees / initial
             score -= fee_ratio * 100
 
     if mode == "anti_overfit":
-        # Penalize overfit gap
-        overfit_gap = result.get("overfit_gap", 0)
-        score -= abs(overfit_gap) * 200  # heavy penalty for divergence
-
-        # Penalize noise sensitivity
+        # Penalize noise sensitivity (not already captured in total_return)
         noise_spread = result.get("noise_spread", 0)
-        score -= noise_spread * 100  # penalize strategies fragile to small changes
+        score -= noise_spread * 100
 
-        # Bonus for positive validation return
+        # Bonus/penalty for validation-set return
         val_return = result.get("val_return", ret)
         if val_return > 0:
             score += val_return * 50
